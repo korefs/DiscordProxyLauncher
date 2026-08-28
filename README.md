@@ -1,4 +1,4 @@
-# Discord Proxy Launcher — .NET Framework 4.8
+# Discord Proxy Launcher
 
 * Como **não** assistir/compartilhar telas no Discord.
 
@@ -13,12 +13,6 @@
 
 Se ocorrer erro após a ativação do proxy, o programa tenta restaurá-lo no bloco de finalização.
 A janela também impede fechamento normal enquanto a operação está em andamento.
-
-## Por que esta versão é pequena?
-
-Ela usa o .NET Framework já presente no Windows, em vez de colocar um runtime .NET moderno inteiro dentro do executável.
-
-O projeto mira **.NET Framework 4.8** para ter compatibilidade maior. Windows com .NET Framework 4.8.1 também executa aplicativos 4.8 normalmente.
 
 ## Compilar
 
