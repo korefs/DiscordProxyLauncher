@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <LangVersion>7.3</LangVersion>
+
+    <AssemblyName>DiscordProxyLauncher</AssemblyName>
+    <RootNamespace>DiscordProxyLauncher</RootNamespace>
+    <Product>Discord Proxy Launcher</Product>
+    <Title>Discord Proxy Launcher</Title>
+    <Description>Reinicia o Discord temporariamente usando um proxy do Windows e restaura a configuração original.</Description>
+    <Company>Gabriel</Company>
+    <Authors>Gabriel</Authors>
+    <Copyright>Copyright © 2026 Gabriel</Copyright>
+    <Version>1.1.0</Version>
+    <FileVersion>1.1.0.0</FileVersion>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <Prefer32Bit>false</Prefer32Bit>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="All" />
+  </ItemGroup>
+
+</Project>
