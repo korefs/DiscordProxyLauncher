@@ -26,7 +26,7 @@ O arquivo final será copiado para:
 
 `dist\DiscordProxyLauncher.exe`
 
-Esse é o único arquivo que você precisa enviar.
+Esse é o único arquivo que você precisa.
 
 ### Visual Studio
 
