@@ -1,12 +1,23 @@
 using Microsoft.Win32;
 using System;
+using System.IO;
+using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Runtime.InteropServices;
+using System.Runtime.Serialization;
+using System.Runtime.Serialization.Json;
+using System.Threading.Tasks;
 
 namespace DiscordProxyLauncher
 {
     internal static class ProxyService
     {
+        private const string ValidationUrl = "https://discord.com/api/v10/gateway";
+        private const string ProxyListUrl =
+            "https://proxyfreeonly.com/api/free-proxy-list" +
+            "?limit=10&page=1&sortBy=lastChecked&sortType=desc&country=US";
+
         private const string RegistryPath =
             @"Software\Microsoft\Windows\CurrentVersion\Internet Settings";
 
@@ -45,6 +56,51 @@ namespace DiscordProxyLauncher
                 ProxyServer = proxyServer;
                 ProxyServerKind = proxyServerKind;
             }
+        }
+
+        internal sealed class ProxyEndpoint
+        {
+            public string Host { get; private set; }
+            public int Port { get; private set; }
+
+            public ProxyEndpoint(string host, int port)
+            {
+                Host = host;
+                Port = port;
+            }
+
+            public override string ToString()
+            {
+                return Host + ":" + Port;
+            }
+        }
+
+        [DataContract]
+        private sealed class ProxyApiItem
+        {
+            [DataMember(Name = "ip")]
+            public string Ip { get; set; }
+
+            [DataMember(Name = "port")]
+            public string Port { get; set; }
+
+            [DataMember(Name = "protocols")]
+            public string[] Protocols { get; set; }
+        }
+
+        public static Task<bool> IsAvailableAsync(
+            ProxyEndpoint endpoint,
+            TimeSpan timeout)
+        {
+            if (endpoint == null)
+                throw new ArgumentNullException("endpoint");
+
+            return Task.Run(() => IsAvailable(endpoint, timeout));
+        }
+
+        public static Task<IList<ProxyEndpoint>> FetchProxiesAsync(TimeSpan timeout)
+        {
+            return Task.Run(() => FetchProxies(timeout));
         }
 
         public static ProxySnapshot Capture()
@@ -90,6 +146,98 @@ namespace DiscordProxyLauncher
             }
 
             NotifySettingsChanged();
+        }
+
+        private static bool IsAvailable(ProxyEndpoint endpoint, TimeSpan timeout)
+        {
+            try
+            {
+                int timeoutMilliseconds = (int)Math.Max(
+                    1000,
+                    Math.Min(int.MaxValue, timeout.TotalMilliseconds));
+
+                HttpWebRequest request = WebRequest.CreateHttp(ValidationUrl);
+                request.Method = "GET";
+                request.Proxy = new WebProxy(endpoint.Host, endpoint.Port);
+                request.Timeout = timeoutMilliseconds;
+                request.ReadWriteTimeout = timeoutMilliseconds;
+                request.UserAgent = "DiscordProxyLauncher/1.3";
+                request.KeepAlive = false;
+
+                using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
+                using (StreamReader reader = new StreamReader(response.GetResponseStream()))
+                {
+                    string content = reader.ReadToEnd();
+
+                    return response.StatusCode == HttpStatusCode.OK &&
+                        content.IndexOf(
+                            "gateway.discord.gg",
+                            StringComparison.OrdinalIgnoreCase) >= 0;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static IList<ProxyEndpoint> FetchProxies(TimeSpan timeout)
+        {
+            int timeoutMilliseconds = (int)Math.Max(
+                1000,
+                Math.Min(int.MaxValue, timeout.TotalMilliseconds));
+
+            HttpWebRequest request = WebRequest.CreateHttp(ProxyListUrl);
+            request.Method = "GET";
+            request.Accept = "application/json";
+            request.UserAgent = "DiscordProxyLauncher/1.3";
+            request.AutomaticDecompression =
+                DecompressionMethods.GZip | DecompressionMethods.Deflate;
+            request.Timeout = timeoutMilliseconds;
+            request.ReadWriteTimeout = timeoutMilliseconds;
+
+            using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
+            {
+                if (response.StatusCode != HttpStatusCode.OK)
+                    throw new InvalidOperationException(
+                        "O serviço de proxies respondeu com o status " +
+                        (int)response.StatusCode + ".");
+
+                DataContractJsonSerializer serializer =
+                    new DataContractJsonSerializer(typeof(ProxyApiItem[]));
+
+                using (Stream stream = response.GetResponseStream())
+                {
+                    ProxyApiItem[] items =
+                        (ProxyApiItem[])serializer.ReadObject(stream);
+
+                    return (items ?? new ProxyApiItem[0])
+                        .Take(10)
+                        .Where(IsSupportedProxy)
+                        .Select(item => new ProxyEndpoint(
+                            item.Ip,
+                            int.Parse(item.Port)))
+                        .GroupBy(proxy => proxy.ToString(), StringComparer.OrdinalIgnoreCase)
+                        .Select(group => group.First())
+                        .ToList();
+                }
+            }
+        }
+
+        private static bool IsSupportedProxy(ProxyApiItem item)
+        {
+            IPAddress parsedAddress;
+            int parsedPort;
+
+            return item != null &&
+                IPAddress.TryParse(item.Ip, out parsedAddress) &&
+                int.TryParse(item.Port, out parsedPort) &&
+                parsedPort >= 1 &&
+                parsedPort <= 65535 &&
+                item.Protocols != null &&
+                item.Protocols.Any(protocol =>
+                    string.Equals(protocol, "http", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(protocol, "https", StringComparison.OrdinalIgnoreCase));
         }
 
         public static void Restore(ProxySnapshot snapshot)

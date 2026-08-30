@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -8,26 +10,36 @@ namespace DiscordProxyLauncher
 {
     internal sealed class MainForm : Form
     {
-        private const string ProxyHost = "181.39.25.196";
-        private const int ProxyPort = 8118;
         private const int StartupDelaySeconds = 10;
+        private static readonly TimeSpan ProxyValidationTimeout = TimeSpan.FromSeconds(5);
+        private static readonly TimeSpan ProxySearchTimeout = TimeSpan.FromSeconds(15);
+
+        private static readonly ProxyService.ProxyEndpoint[] DefaultProxies =
+        {
+            new ProxyService.ProxyEndpoint("181.39.25.196", 8118),
+            new ProxyService.ProxyEndpoint("159.112.235.87", 80),
+            new ProxyService.ProxyEndpoint("172.67.167.93", 80),
+            new ProxyService.ProxyEndpoint("172.64.149.154", 80),
+            new ProxyService.ProxyEndpoint("172.67.181.184", 80)
+        };
 
         private readonly Label _statusLabel;
+        private readonly ComboBox _proxyComboBox;
+        private readonly Button _searchProxyButton;
         private readonly Button _runButton;
         private readonly Button _closeButton;
         private readonly ProgressBar _progressBar;
         private readonly Panel _statusDot;
 
         private bool _running;
+        private bool _searching;
 
         public MainForm()
         {
             Text = "Discord Proxy Launcher";
-            ClientSize = new Size(520, 356);
-            MinimumSize = new Size(520, 356);
-            MaximumSize = new Size(520, 356);
-            StartPosition = FormStartPosition.CenterScreen;
             FormBorderStyle = FormBorderStyle.FixedSingle;
+            ClientSize = new Size(520, 444);
+            StartPosition = FormStartPosition.CenterScreen;
             MaximizeBox = false;
             BackColor = Color.FromArgb(24, 25, 28);
             ForeColor = Color.White;
@@ -61,16 +73,41 @@ namespace DiscordProxyLauncher
 
             Label proxyLabel = new Label
             {
-                Text = "Proxy: " + ProxyHost + ":" + ProxyPort,
+                Text = "Proxy preferido (fallback automático):",
                 AutoSize = true,
                 Location = new Point(32, 122),
                 ForeColor = Color.FromArgb(205, 205, 210)
             };
 
+            _proxyComboBox = new ComboBox
+            {
+                Location = new Point(32, 145),
+                Size = new Size(456, 30),
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                BackColor = Color.FromArgb(45, 46, 50),
+                ForeColor = Color.White
+            };
+            _proxyComboBox.Items.AddRange(DefaultProxies);
+            _proxyComboBox.SelectedIndex = 0;
+
+            _searchProxyButton = new Button
+            {
+                Text = "Buscar mais servidores proxy",
+                Location = new Point(32, 185),
+                Size = new Size(456, 38),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.FromArgb(45, 46, 50),
+                ForeColor = Color.FromArgb(225, 225, 230),
+                Cursor = Cursors.Hand
+            };
+            _searchProxyButton.FlatAppearance.BorderColor = Color.FromArgb(70, 71, 76);
+            _searchProxyButton.FlatAppearance.BorderSize = 1;
+            _searchProxyButton.Click += SearchProxyButton_Click;
+
             _statusDot = new Panel
             {
                 Size = new Size(10, 10),
-                Location = new Point(34, 161),
+                Location = new Point(34, 249),
                 BackColor = Color.FromArgb(145, 145, 150)
             };
             MakeCircular(_statusDot);
@@ -79,13 +116,13 @@ namespace DiscordProxyLauncher
             {
                 Text = "Pronto",
                 AutoSize = true,
-                Location = new Point(52, 156),
+                Location = new Point(52, 244),
                 ForeColor = Color.FromArgb(210, 210, 215)
             };
 
             _progressBar = new ProgressBar
             {
-                Location = new Point(32, 188),
+                Location = new Point(32, 276),
                 Size = new Size(456, 8),
                 Style = ProgressBarStyle.Continuous,
                 Minimum = 0,
@@ -96,7 +133,7 @@ namespace DiscordProxyLauncher
             _runButton = new Button
             {
                 Text = "Reiniciar Discord com Proxy",
-                Location = new Point(32, 218),
+                Location = new Point(32, 306),
                 Size = new Size(456, 48),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.FromArgb(88, 101, 242),
@@ -110,7 +147,7 @@ namespace DiscordProxyLauncher
             _closeButton = new Button
             {
                 Text = "Fechar",
-                Location = new Point(32, 276),
+                Location = new Point(32, 364),
                 Size = new Size(456, 44),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.FromArgb(45, 46, 50),
@@ -127,6 +164,8 @@ namespace DiscordProxyLauncher
                 titleLabel,
                 descriptionLabel,
                 proxyLabel,
+                _proxyComboBox,
+                _searchProxyButton,
                 _statusDot,
                 _statusLabel,
                 _progressBar,
@@ -139,23 +178,32 @@ namespace DiscordProxyLauncher
 
         private async void RunButton_Click(object sender, EventArgs e)
         {
-            if (_running)
+            if (_running || _searching)
                 return;
 
             _running = true;
             _runButton.Enabled = false;
             _runButton.Text = "Executando...";
+            _proxyComboBox.Enabled = false;
+            _searchProxyButton.Enabled = false;
 
             ProxyService.ProxySnapshot backup = null;
             bool proxyWasChanged = false;
+            ProxyService.ProxyEndpoint activeProxy = null;
 
             try
             {
-                SetStatus("Salvando configuração atual...", 10, StatusKind.Working);
+                ProxyService.ProxyEndpoint selectedProxy =
+                    (ProxyService.ProxyEndpoint)_proxyComboBox.SelectedItem;
+
+                activeProxy = await FindAvailableProxyAsync(selectedProxy);
+                _proxyComboBox.SelectedItem = activeProxy;
+
+                SetStatus("Salvando configuração atual...", 20, StatusKind.Working);
                 backup = ProxyService.Capture();
 
-                SetStatus("Ativando proxy...", 25, StatusKind.Working);
-                ProxyService.Enable(ProxyHost, ProxyPort);
+                SetStatus("Ativando proxy " + activeProxy + "...", 30, StatusKind.Working);
+                ProxyService.Enable(activeProxy.Host, activeProxy.Port);
                 proxyWasChanged = true;
                 await Task.Delay(750);
 
@@ -185,7 +233,10 @@ namespace DiscordProxyLauncher
                 ProxyService.Restore(backup);
                 proxyWasChanged = false;
 
-                SetStatus("Concluído — proxy restaurado", 100, StatusKind.Success);
+                SetStatus(
+                    "Concluído com " + activeProxy + " — proxy restaurado",
+                    100,
+                    StatusKind.Success);
             }
             catch (Exception ex)
             {
@@ -224,19 +275,127 @@ namespace DiscordProxyLauncher
 
                 _runButton.Enabled = true;
                 _runButton.Text = "Reiniciar Discord com Proxy";
+                _proxyComboBox.Enabled = true;
+                _searchProxyButton.Enabled = true;
                 _running = false;
             }
         }
 
+        private async void SearchProxyButton_Click(object sender, EventArgs e)
+        {
+            if (_running || _searching)
+                return;
+
+            _searching = true;
+            _searchProxyButton.Enabled = false;
+            _runButton.Enabled = false;
+            _proxyComboBox.Enabled = false;
+
+            try
+            {
+                SetStatus("Buscando proxies dos Estados Unidos...", 5, StatusKind.Working);
+
+                IList<ProxyService.ProxyEndpoint> fetchedProxies =
+                    await ProxyService.FetchProxiesAsync(ProxySearchTimeout);
+
+                int addedCount = 0;
+
+                foreach (ProxyService.ProxyEndpoint proxy in fetchedProxies)
+                {
+                    bool alreadyExists = _proxyComboBox.Items
+                        .Cast<ProxyService.ProxyEndpoint>()
+                        .Any(existing =>
+                            string.Equals(existing.Host, proxy.Host, StringComparison.OrdinalIgnoreCase) &&
+                            existing.Port == proxy.Port);
+
+                    if (alreadyExists)
+                        continue;
+
+                    _proxyComboBox.Items.Add(proxy);
+                    addedCount++;
+                }
+
+                if (addedCount == 0)
+                {
+                    SetStatus(
+                        "Nenhum novo proxy HTTP/HTTPS encontrado",
+                        0,
+                        StatusKind.Warning);
+                }
+                else
+                {
+                    SetStatus(
+                        addedCount + (addedCount == 1
+                            ? " novo proxy adicionado"
+                            : " novos proxies adicionados"),
+                        100,
+                        StatusKind.Success);
+                }
+            }
+            catch (Exception ex)
+            {
+                SetStatus("Falha ao buscar proxies", 0, StatusKind.Error);
+
+                MessageBox.Show(
+                    this,
+                    "Não foi possível consultar novos proxies.\n\n" + ex.Message,
+                    "Discord Proxy Launcher",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+            finally
+            {
+                _searchProxyButton.Enabled = true;
+                _runButton.Enabled = true;
+                _proxyComboBox.Enabled = true;
+                _searching = false;
+            }
+        }
+
+        private async Task<ProxyService.ProxyEndpoint> FindAvailableProxyAsync(
+            ProxyService.ProxyEndpoint selectedProxy)
+        {
+            if (selectedProxy == null)
+                throw new InvalidOperationException("Selecione um proxy para continuar.");
+
+            List<ProxyService.ProxyEndpoint> candidates = new List<ProxyService.ProxyEndpoint>
+            {
+                selectedProxy
+            };
+
+            candidates.AddRange(_proxyComboBox.Items
+                .Cast<ProxyService.ProxyEndpoint>()
+                .Where(proxy => proxy != selectedProxy));
+
+            for (int index = 0; index < candidates.Count; index++)
+            {
+                ProxyService.ProxyEndpoint candidate = candidates[index];
+                int progress = 5 + (int)((index / (double)candidates.Count) * 10);
+
+                SetStatus(
+                    "Validando " + candidate + " (" + (index + 1) + "/" + candidates.Count + ")...",
+                    progress,
+                    StatusKind.Working);
+
+                if (await ProxyService.IsAvailableAsync(candidate, ProxyValidationTimeout))
+                    return candidate;
+            }
+
+            throw new InvalidOperationException(
+                "Nenhum proxy respondeu corretamente ao Discord. Tente novamente mais tarde.");
+        }
+
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
         {
-            if (!_running)
+            if (!_running && !_searching)
                 return;
 
             e.Cancel = true;
             MessageBox.Show(
                 this,
-                "Aguarde a conclusão para garantir que o proxy do Windows seja restaurado.",
+                _running
+                    ? "Aguarde a conclusão para garantir que o proxy do Windows seja restaurado."
+                    : "Aguarde a busca de servidores proxy terminar.",
                 "Discord Proxy Launcher",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
