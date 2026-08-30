@@ -4,6 +4,13 @@ Aplicativo Windows Forms para reiniciar o Discord temporariamente por um proxy e
 
 ![Application](./app.png)
 
+## Como usar
+
+1. Abra `DiscordProxyLauncher.exe`.
+2. Escolha um proxy ou clique em **Buscar mais servidores proxy**.
+3. Clique em **Reiniciar Discord com Proxy**.
+4. Aguarde a conclusão e a restauração automática do proxy original.
+
 ## Recursos
 
 - Seleção do proxy preferido pela interface.
