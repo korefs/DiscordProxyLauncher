@@ -2,6 +2,8 @@
 
 Aplicativo Windows Forms para reiniciar o Discord temporariamente por um proxy e restaurar, ao final, a configuração original do Windows.
 
+![Application](./app.png)
+
 ## Recursos
 
 - Seleção do proxy preferido pela interface.
