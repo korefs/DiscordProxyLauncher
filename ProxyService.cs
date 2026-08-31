@@ -212,7 +212,7 @@ namespace DiscordProxyLauncher
                         (ProxyApiItem[])serializer.ReadObject(stream);
 
                     return (items ?? new ProxyApiItem[0])
-                        .Take(10)
+                        .Take(50)
                         .Where(IsSupportedProxy)
                         .Select(item => new ProxyEndpoint(
                             item.Ip,

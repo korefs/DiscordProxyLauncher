@@ -40,7 +40,7 @@ O botão **Buscar mais servidores proxy** consulta via `GET`:
 https://proxyfreeonly.com/api/free-proxy-list?limit=10&page=1&sortBy=lastChecked&sortType=desc&country=US
 ```
 
-A aplicação considera os 10 primeiros resultados, aceita somente protocolos HTTP/HTTPS compatíveis com o proxy do Windows e evita duplicidades. Proxies SOCKS são ignorados. Os servidores encontrados ficam disponíveis no seletor durante a sessão atual.
+A aplicação considera os 50 primeiros resultados, aceita somente protocolos HTTP/HTTPS compatíveis com o proxy do Windows e evita duplicidades. Proxies SOCKS são ignorados. Os servidores encontrados ficam disponíveis no seletor durante a sessão atual.
 
 ## O que ele faz
 
