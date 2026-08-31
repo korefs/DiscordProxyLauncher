@@ -20,12 +20,12 @@ if exist dist rmdir /s /q dist
 mkdir dist
 
 echo Restaurando dependencias de compilacao...
-dotnet restore
+dotnet restore "DiscordProxyLauncher.csproj"
 if errorlevel 1 goto :error
 
 echo.
 echo Compilando Release...
-dotnet build -c Release --no-restore
+dotnet build "DiscordProxyLauncher.csproj" -c Release --no-restore
 if errorlevel 1 goto :error
 
 copy /y "bin\Release\net48\DiscordProxyLauncher.exe" "dist\DiscordProxyLauncher.exe" >nul
